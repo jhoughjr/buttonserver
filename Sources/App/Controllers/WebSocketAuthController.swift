@@ -1,39 +1,63 @@
+//
+//  File.swift
+//  File
+//
+//  Created by Jimmy Hough Jr on 7/27/21.
+//
+
 import Vapor
 import Fluent
 
-struct AuthenticationController: RouteCollection {
+struct WebSocketAuthController: RouteCollection {
     func boot(routes: RoutesBuilder) throws {
         routes.group("auth") { auth in
             
-            auth.post("register", use: register)
-            auth.post("login", use: login)
-            
-            auth.group("email-verification") { emailVerificationRoutes in
-                emailVerificationRoutes.post("", use: sendEmailVerification)
-                emailVerificationRoutes.get("", use: verifyEmail)
+            auth.webSocket("register") { req, ws in
+                ws.onText { ws, text in
+                    // String received by this WebSocket.
+                    print(text)
+                    do {
+                        try RegisterRequest.validate(json: text)
+                        ws.send("valid")
+                    }catch {
+                        print("shoot me in the head")
+                        ws.send(error.localizedDescription, promise: req.eventLoop.makePromise())
+                    }
+                }
+
+                ws.onBinary { ws, binary in
+                    // [UInt8] received by this WebSocket.
+                    print(binary)
+                }
             }
+//            auth.webSocket("register", use: register)
             
-            auth.group("reset-password") { resetPasswordRoutes in
-                resetPasswordRoutes.post("", use: resetPassword)
-                resetPasswordRoutes.get("verify", use: verifyResetPasswordToken)
-            }
-            
-            auth.post("recover", use: recoverAccount)
-            
-            auth.post("accessToken", use: refreshAccessToken)
-            
-            // Authentication required
-            auth.group(UserAuthenticator()) { authenticated in
-                authenticated.get("me", use: getCurrentUser)
-            }
+//            auth.webSocket("login", use: login)
+//
+//            auth.group("email-verification") { emailVerificationRoutes in
+//                emailVerificationRoutes.webSocket("", use: sendEmailVerification)
+//                emailVerificationRoutes.get("", use: verifyEmail)
+//            }
+//
+//            auth.group("reset-password") { resetPasswordRoutes in
+//                resetPasswordRoutes.webSocket("", use: resetPassword)
+//                resetPasswordRoutes.webSocket("verify", use: verifyResetPasswordToken)
+//            }
+//
+//            auth.webSocket("recover", use: recoverAccount)
+//
+//            auth.webSocket("accessToken", use: refreshAccessToken)
+//
+//            // Authentication required
+//            auth.group(UserAuthenticator()) { authenticated in
+//                authenticated.webSocket("me", use: getCurrentUser)
+//            }
         }
     }
     
     private func register(_ req: Request) throws -> EventLoopFuture<HTTPStatus> {
         req.logger.info("register, logs! \(req)")
-        print("body:\(req.body)")
         try RegisterRequest.validate(content:req)
-        
         let registerRequest = try req.content.decode(RegisterRequest.self)
         guard registerRequest.password == registerRequest.confirmPassword else {
             throw AuthenticationError.passwordsDontMatch
